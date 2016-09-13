@@ -6,6 +6,11 @@ RATING_DEPTH = 0   # how far ahead to check a move's rating
 BUDDY_RATING = 0.5 # buddy rating
 BOGY_RATING  = 2.0 # bogy rating
 
+turns = []
+moves = []
+moved = []
+state = None
+
 def get_all_around( loc ):
     locs = []
 
@@ -21,17 +26,14 @@ def get_all_around( loc ):
 
 class Robot:
 
-    def __init__(self):
-        self.turns = []
-        self.moves = []
-        self.moved = []
-        self.state = None
-
     def act(self, game):
+
+        global moves, moved, state
+
         actions = []
 
         # Get Game State
-        self.state  = self._get_game_state( game )
+        state  = self._get_game_state( game )
 
         # If on spawn move
         if ( 'spawn' in rg.loc_types(self.location) ):
@@ -54,8 +56,8 @@ class Robot:
             actions = ['guard']
 
         if ( actions[0] == 'move' ):
-            self.moves.append( actions[1] )
-            self.moved.append( self.robot_id )
+            moves.append( actions[1] )
+            moved.append( self.robot_id )
 
         # SUICIDE !!!
         elif ( actions[0] == 'guard' and self.hp <= SUICIDE_HP ):
@@ -64,9 +66,12 @@ class Robot:
             if ( test != [] ):
                 actions = test
 
+        #self.count += 1
         return actions
 
     def _get_game_state( self, game ):
+
+        global moves, moved, turns
 
         state = {}
         state['BUDDY'] = []
@@ -82,14 +87,16 @@ class Robot:
             else:
                 state['BOGY'].append( loc )
 
-        if ( game.turn not in self.turns ):
-            self.turns.append( game.turn )
-            self.moves = []
-            self.moved = []
+        if ( game.turn not in turns ):
+            turns.append( game.turn )
+            moves = []
+            moved = []
 
         return state
 
     def _move( self, game ):
+
+        global moves
 
         # Always move when in spawn
         move = rg.toward(self.location, rg.CENTER_POINT)
@@ -104,7 +111,7 @@ class Robot:
             around.append( self.location )
 
             for loc in around:
-                if ( 'spawn' not in rg.loc_types(loc) and loc not in self.moves ):
+                if ( 'spawn' not in rg.loc_types(loc) and loc not in moves ):
                     rating = self._get_move_rating( loc, game )
 
                     if ( rating < best_rating ):
@@ -120,6 +127,9 @@ class Robot:
         return ['move', move]
 
     def _attack( self, game ):
+
+        global state
+
         # Look for weakest bogu around and attack him.
         around   = rg.locs_around(self.location, filter_out=('invalid', 'obstacle'))
 
@@ -128,7 +138,7 @@ class Robot:
 
         # find weakest bogy around me
         for loc in around:
-            if ( loc in self.state['BOGY'] and game.get('robots')[loc].hp < health ):
+            if ( loc in state['BOGY'] and game.get('robots')[loc].hp < health ):
 
                 health = game.get('robots')[loc].hp
 
@@ -144,7 +154,7 @@ class Robot:
             if ( loc in around ):
                 continue
 
-            if ( loc in self.state['BOGY'] ):
+            if ( loc in state['BOGY'] ):
                 check_locs = [(-1,-1),(1,-1),(-1,1),(1,1)]
 
                 for check in check_locs:
@@ -164,7 +174,7 @@ class Robot:
         closest_dist = 9999
         closest_loc  = ()
 
-        for loc in self.state['BOGY']:
+        for loc in state['BOGY']:
             dist = rg.wdist(self.location, loc)
 
             if ( dist < closest_dist ):
@@ -185,12 +195,15 @@ class Robot:
         return []
 
     def _suicide( self, game, limit=1 ):
+
+        global state
+
         around   = rg.locs_around(self.location, filter_out=('invalid', 'obstacle'))
 
         count = 0
 
         for loc in around:
-            if ( loc in self.state['BOGY'] ):
+            if ( loc in state['BOGY'] ):
                 count += 1
 
         if ( count > limit ):
@@ -200,8 +213,10 @@ class Robot:
 
     def _check_move_valid( self, game, loc ):
 
+        global moves, moved, state
+
         # If another robot already booked this move its not valid
-        if ( loc in self.moves ):
+        if ( loc in moves ):
             return False
 
         # Dont move back into spawn
@@ -209,12 +224,12 @@ class Robot:
             return False
 
         # If planned move is location of buddy, check if he is moving
-        if ( loc in self.state['BUDDY'] ):
-            if ( game.get('robots')[loc].robot_id not in self.moved ):
+        if ( loc in state['BUDDY'] ):
+            if ( game.get('robots')[loc].robot_id not in moved ):
                 return False
 
         # Dont move over enemy
-        if ( loc in self.state['BOGY'] ):
+        if ( loc in state['BOGY'] ):
             return False
 
         # One more check
@@ -224,6 +239,9 @@ class Robot:
         return True
 
     def _get_move_rating( self, loc, game, index=0 ):
+
+        global state
+
         rating = 0.0
 
         all_around = get_all_around( loc )
@@ -232,9 +250,9 @@ class Robot:
             if ( loc == self.location ):
                 continue
 
-            if ( loc in self.state['BUDDY'] ):
+            if ( loc in state['BUDDY'] ):
                 rating += BUDDY_RATING
-            if ( loc in self.state['BOGY'] ):
+            if ( loc in state['BOGY'] ):
                 rating += BOGY_RATING * game.get('robots')[loc].hp
             #elif ( index <= RATING_DEPTH ):
             #    rating += self._get_move_rating( loc, state, game, index+1 )
